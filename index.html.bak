@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="vendor/vue.js"></script>
+    <script src="vendor/sockjs.js"></script>
+    <title>Vite + React + TS</title>
+  </head>
+  <body>
+    <div id="root" style="display: flex;"></div>
+    <!-- <script type="module" src="/src/main.tsx"></script> -->
+    <div>
+      <button @click="connect">Connect</button>
+    </div>
+  </body>
+  <script>
+    const PORT = 59650;
+    let root = new Vue({
+      el: '#root',
+      data: {
+        connectionStatus: 'disconnected',
+        token: '5ecdb8e4ccd09ad2e58ff5459cfad9bec37daa1',
+        url: `http://127.0.0.1:${PORT}/api`, //`http://${location.hostname}:${PORT}/api`,
+        scenes: [],
+        audioSources: [],
+        sceneItems: [],
+        nextRequestId: 1,
+        requests: {},
+        subscriptions: {},
+        socket: null,
+        page: 'scenes',
+        requestString: '',
+        topPanelIsVisible: true
+    },
+    mounted() {
+      this.resetRequestString();
+    },
+    methods: {
+      connect() {
+        console.log('connect');
+        if (this.connectionStatus !== 'disconnected') return;
+        this.connectionStatus = 'pending';
+        this.socket = new SockJS(this.url);
+
+        this.socket.onopen = () => {
+          console.log('open');
+          // send token for auth
+          this.request('TcpServerService', 'auth', this.token).then(() => {
+            this.onConnectionHandler();
+          }).catch(e => {
+            alert(e.message);
+          })
+        };
+
+        this.socket.onmessage = (e) => {
+          this.onMessageHandler(e.data);
+          this.logMessage(e.data.toString(), 'response');
+        };
+
+
+        this.socket.onclose = (e) => {
+          this.connectionStatus = 'disconnected';
+          alert('disconnected: ' + e.reason);
+          console.log('close', e);
+        };
+      },
+      resetRequestString() {
+        this.requestString = JSON.stringify({
+          jsonrpc: '2.0',
+          id: this.nextRequestId++,
+          method: 'getSources',
+          params: { resource: 'SourcesService', args: [] }
+        }, null, 2);
+      },
+    }
+  })
+  </script>
+</html>
