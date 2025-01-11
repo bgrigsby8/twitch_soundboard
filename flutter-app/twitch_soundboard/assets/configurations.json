@@ -1,0 +1,18 @@
+{
+    "input_device": "External Microphone",
+    "output_device": "External Headphones",
+    "36": {"sound": "sounds/alexis-mateo-bam.mp3"},
+    "37": {"sound": "sounds/drag-race-shade-sound.mp3"},
+    "38": {"sound": "sounds/hannah-montana-transition.mp3"},
+    "39": {"sound": "sounds/icarly-cheers.mp3"},
+    "40": {"sound": "sounds/m-e-o-w.mp3"},
+    "41": {"sound": "sounds/meme-okay-lets-go.mp3"},
+    "42": {"sound": "sounds/obamna_zq2fl9r.mp3"},
+    "43": {"sound": "sounds/oh-thats-not.mp3"},
+    "70": {"effect": "reverb"},
+    "71": {"effect": "harmonizer"},
+    "72": {"effect": "freq_shift"},
+    "73": {"effect": "chorus"},
+    "74": {"effect": "distortion"}
+  }
+  
