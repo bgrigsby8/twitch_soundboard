@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:logger/web.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as path;
+
+var logger = Logger();
 
 void main() {
   runApp(const MyApp());
@@ -37,18 +42,22 @@ class PythonProcessManager {
       if (pid != null) {
         const platformChannel = MethodChannel('com.example.twitchSoundboard');
         await platformChannel.invokeMethod('setPythonPid', pid);
-        print('Python process started with PID: $pid');
+        logger.i('Python process started with PID: $pid');
       }
 
       _pythonProcess?.stdout.transform(SystemEncoding().decoder).listen((data) {
-        print('Python stdout: $data');
+        logger.i('Python stdout: $data');
       });
       _pythonProcess?.stderr.transform(SystemEncoding().decoder).listen((data) {
-        print('Python stderr: $data');
+        if (data == "No MIDI input ports found.") {
+          logger.w('No MIDI input ports found.');
+        } else {
+          logger.w('Python stderr: $data');
+        }
       });
-      print('Python process started successfully.');
+      logger.i('Python process started successfully.');
     } catch (e) {
-      print('Failed to start Python process: $e');
+      logger.w('Failed to start Python process: $e');
     }
   }
 
@@ -56,14 +65,14 @@ class PythonProcessManager {
   void stop() {
     if (_pythonProcess != null) {
       _pythonProcess?.kill();
-      print('Python process stopped.');
+      logger.i('Python process stopped.');
       _pythonProcess = null;
     }
   }
 
   /// Restart the Python process
   Future<void> restart(String executablePath) async {
-    print('Restarting Python process...');
+    logger.i('Restarting Python process...');
     stop(); // Stop the existing process
     await start(executablePath); // Start a new process
   }
@@ -99,7 +108,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    print("App is closing...");
+    logger.i("App is closing...");
     WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
     _pythonManager.stop(); // Stop Python process when the app is closed
     super.dispose();
@@ -107,7 +116,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    print("App lifecycle state changed: $state");
+    logger.i("App lifecycle state changed: $state");
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _pythonManager
@@ -122,7 +131,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
       // Start the Python process
       await _pythonManager.start(executablePath);
     } catch (e) {
-      print('Error setting up Python executable: $e');
+      logger.w('Error setting up Python executable: $e');
     }
   }
 
@@ -133,14 +142,14 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
     // Skip copying if the file already exists
     final pythonExecutable = File(executablePath);
     if (pythonExecutable.existsSync()) {
-      print("Python executable already exists at $executablePath");
+      logger.i("Python executable already exists at $executablePath");
       return executablePath;
     }
 
     // Optionally copy the file from assets if needed (this won't run if manually placed)
     final byteData = await rootBundle.load('assets/python/pyo_controller');
     await pythonExecutable.writeAsBytes(byteData.buffer.asUint8List());
-    print("Python executable copied to $executablePath");
+    logger.i("Python executable copied to $executablePath");
     return executablePath;
   }
 
@@ -193,19 +202,62 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                               ),
                               const SizedBox(height: 10),
                               if (isSound) ...[
-                                TextFormField(
-                                  initialValue: value["sound"],
-                                  decoration: const InputDecoration(
-                                    labelText: "Sound File Path",
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  onChanged: (newValue) {
-                                    setState(() {
-                                      configurations[key]["sound"] = newValue;
-                                      _isModified = true; // Mark as modified
-                                    });
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    final result =
+                                        await FilePicker.platform.pickFiles(
+                                      type: FileType.custom,
+                                      allowedExtensions: ['mp3', 'wav', 'ogg'],
+                                    );
+                                    logger.i("Selected file: ${result?.files}");
+                                    if (result != null &&
+                                        result.files.single.path != null) {
+                                      logger.i(
+                                          "Selected file path: ${result.files.single.path}");
+                                      final selectedFile =
+                                          File(result.files.single.path!);
+                                      logger.i("Selected file: $selectedFile");
+                                      final appDir =
+                                          await getApplicationDocumentsDirectory();
+                                      final soundDir = Directory(path.join(
+                                          appDir.path,
+                                          "twitch-soundboard/sounds"));
+
+                                      // Ensure the sounds directory exists
+                                      if (!soundDir.existsSync()) {
+                                        soundDir.createSync(recursive: true);
+                                      }
+
+                                      // Copy file to sounds directory
+                                      final newPath = path.join(soundDir.path,
+                                          path.basename(selectedFile.path));
+                                      logger.i(
+                                          "Copying file $selectedFile to: $newPath");
+                                      await selectedFile.copy(newPath);
+
+                                      // Update configuration
+                                      setState(() {
+                                        configurations[key]["sound"] =
+                                            "sounds/${path.basename(newPath)}";
+                                        _isModified = true;
+                                      });
+
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                "Sound file selected and copied!")),
+                                      );
+                                    }
                                   },
+                                  child: const Text("Select Sound File"),
                                 ),
+                                if (value["sound"] != null)
+                                  Text(
+                                    "Current File: ${value["sound"]}",
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
+                                  ),
                               ],
                               if (isEffect) ...[
                                 DropdownButtonFormField<String>(
@@ -284,20 +336,13 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
 
   Future<void> _loadConfigurations() async {
     final directory = await getApplicationDocumentsDirectory();
-    print("Directory path: ${directory.path}");
+    logger.i("Directory path: ${directory.path}");
     final file =
         File('${directory.path}/twitch-soundboard/configurations.json');
 
-    // if (!await file.exists()) {
-    //   // Copy the default JSON file from assets
-    //   print("Copying default configurations...");
-    //   final byteData = await rootBundle.load('assets/configurations.json');
-    //   await file.writeAsBytes(byteData.buffer.asUint8List());
-    // }
-
     // Load the configurations
     final content = await file.readAsString();
-    print("Loaded configurations: $content");
+    logger.i("Loaded configurations: $content");
     setState(() {
       configurations = jsonDecode(content) as Map<String, dynamic>;
     });
@@ -307,9 +352,9 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
     final directory = await getApplicationDocumentsDirectory();
     final file =
         File('${directory.path}/twitch-soundboard/configurations.json');
-    print(file.openRead());
-    print(file.path);
-    print("Saving configurations: $configurations");
+    logger.i(file.openRead().toString());
+    logger.i(file.path);
+    logger.i("Saving configurations: $configurations");
     await file.writeAsString(jsonEncode(configurations));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Configurations saved!")),
